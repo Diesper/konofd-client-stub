@@ -1,9 +1,11 @@
 plugins {
-  id("com.android.application") version "8.11.1"
+  id("com.android.application")
+  kotlin("android")
 }
 
 dependencies {
   implementation(project(":unityLibrary"))
+  implementation("androidx.core:core-ktx:1.16.0")
 }
 
 android {
@@ -15,6 +17,10 @@ android {
     targetCompatibility = JavaVersion.VERSION_1_8
   }
 
+  // kotlinOptions {
+  //   jvmTarget = "1.8"
+  // }
+
   defaultConfig {
     minSdk = 22
     targetSdk = 36
@@ -23,8 +29,8 @@ android {
       // noinspection ChromeOsAbiSupport - game does not support x86_64
       abiFilters += "arm64-v8a"
     }
-    versionCode = 1
-    versionName = "1.0"
+    versionCode = 368
+    versionName = "4.11.5/stub-0.1.1"
   }
 
   lint {

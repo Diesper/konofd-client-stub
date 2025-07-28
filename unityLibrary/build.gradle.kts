@@ -5,13 +5,18 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 plugins {
-  id("com.android.library") version "8.11.1"
+  id("com.android.library")
+  kotlin("android")
 }
 
 dependencies {
-  implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar"))))
+  implementation(files("libs/unity-classes.jar"))
+  implementation(files("libs/com.onevcat.uniwebview.jar"))
+
   // noinspection GradleDependency - original APK uses this version
   implementation("com.google.android.gms:play-services-tasks:18.1.0")
+
+  implementation("androidx.core:core-ktx:1.16.0")
 }
 
 android {
@@ -22,6 +27,10 @@ android {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
   }
+
+  // kotlinOptions {
+  //   jvmTarget = "1.8"
+  // }
 
   defaultConfig {
     minSdk = 22
@@ -79,7 +88,7 @@ tasks {
         throw GradleException("Source natives directory '$srcNatives' does not exist.")
       }
 
-      val jniLibsDir = file(layout.buildDirectory.dir("generated/jni_libs_original/arm64-v8a"))
+      val jniLibsDir = file(layout.projectDirectory.dir("original/jni_libs_original/arm64-v8a"))
       jniLibsDir.mkdirs()
 
       copy {
@@ -107,13 +116,12 @@ tasks {
   }
 
   named { it == "mergeDebugJniLibFolders" || it == "mergeReleaseJniLibFolders" }.configureEach {
-    val jniLibsSrc = layout.projectDirectory.dir("src/main/jniLibs")
-    val jniLibsOriginal = layout.buildDirectory.dir("generated/jni_libs_original")
-    if(!jniLibsOriginal.get().asFile.exists()) {
+    val jniLibsSrc = layout.projectDirectory.dir("src/main/jniLibs").asFile
+    val jniLibsOriginal = layout.projectDirectory.dir("original/jni_libs_original").asFile
+    if(!jniLibsOriginal.exists()) {
       throw GradleException("Original jniLibs directory '$jniLibsOriginal' does not exist. Please run 'prepareNativeLibraries' task first.")
     }
 
-    // val jniLibsMerged = layout.buildDirectory.dir("intermediates/jni_libs_merged")
     val jniLibsMerged = layout.buildDirectory.get().asFile
       .resolve("intermediates/merged_jni_libs")
       .resolve(if(name.contains("Debug")) "debug/mergeDebugJniLibFolders" else "release/mergeReleaseJniLibFolders")
@@ -156,7 +164,7 @@ tasks {
     }
   }
 
-  val prepareAssets = register("prepareAssets") {
+  register("prepareAssets") {
     group = "build setup"
 
     doLast {
@@ -168,8 +176,8 @@ tasks {
         throw GradleException("Source assets directory '$srcAssets' does not exist.")
       }
 
-      val assetsDir = layout.buildDirectory.dir("generated/assets_original")
-      assetsDir.get().asFile.mkdirs()
+      val assetsDir = layout.projectDirectory.dir("original/assets_original").asFile
+      assetsDir.mkdirs()
 
       sync {
         from(srcAssets)
@@ -194,7 +202,7 @@ tasks {
     }
   }
 
-  val prepareGlobalMetadata = register("prepareGlobalMetadata") {
+  register("prepareGlobalMetadata") {
     group = "build setup"
 
     doLast {
@@ -206,9 +214,10 @@ tasks {
         throw GradleException("Source global-metadata.dat file '$srcGlobalMetadata' does not exist.")
       }
 
-      val assetsDir =
-        layout.buildDirectory.dir("generated/assets_global_metadata/bin/Data/Managed/Metadata")
-      assetsDir.get().asFile.mkdirs()
+      val assetsDir = layout.projectDirectory
+        .dir("original/assets_global_metadata/bin/Data/Managed/Metadata")
+        .asFile
+      assetsDir.mkdirs()
 
       copy {
         from(file(srcGlobalMetadata))
@@ -223,12 +232,12 @@ tasks {
 
   named { it == "mergeDebugAssets" || it == "mergeReleaseAssets" }.configureEach {
     val assetsSrc = layout.projectDirectory.dir("src/main/assets")
-    val assetsOriginal = layout.buildDirectory.dir("generated/assets_original")
-    val assetsGlobalMetadata = layout.buildDirectory.dir("generated/assets_global_metadata")
-    if(!assetsOriginal.get().asFile.exists()) {
+    val assetsOriginal = layout.projectDirectory.dir("original/assets_original").asFile
+    val assetsGlobalMetadata = layout.projectDirectory.dir("original/assets_global_metadata").asFile
+    if(!assetsOriginal.exists()) {
       throw GradleException("Original assets directory '$assetsOriginal' does not exist. Please run 'prepareAssets' task first.")
     }
-    if(!assetsGlobalMetadata.get().asFile.exists()) {
+    if(!assetsGlobalMetadata.exists()) {
       throw GradleException("Global metadata assets directory '$assetsGlobalMetadata' does not exist. Please run 'prepareGlobalMetadata' task first.")
     }
 
@@ -279,9 +288,9 @@ tasks {
   @OptIn(ExperimentalEncodingApi::class)
   register("patchGlobalMetadata") {
     doLast {
-      var inputFile = layout.buildDirectory
-        .file("generated/assets_global_metadata/bin/Data/Managed/Metadata/global-metadata.dat")
-        .get().asFile
+      var inputFile = layout.projectDirectory
+        .file("original/assets_global_metadata/bin/Data/Managed/Metadata/global-metadata.dat")
+        .asFile
       if(!inputFile.exists()) {
         throw GradleException("Input global-metadata.dat file does not exist: ${inputFile.absolutePath}")
       }
@@ -296,9 +305,9 @@ tasks {
       }
       inputFile = backupFile
 
-      val outputFile = layout.buildDirectory
-        .file("generated/assets_global_metadata/bin/Data/Managed/Metadata/global-metadata.dat")
-        .get().asFile
+      val outputFile = layout.projectDirectory
+        .file("original/assets_global_metadata/bin/Data/Managed/Metadata/global-metadata.dat")
+        .asFile
 
       // Get patch URL
       val patchUrl = project.findProperty("konofd.patch.url")?.toString()
@@ -358,18 +367,15 @@ tasks {
         "dFJO2tzZ8="
       )
 
-      val modulusParts = mutableListOf<String>()
+      require(originalParts.sumOf(String::length) == modulusBase64.length) {
+        "Modulus length mismatch: expected total ${originalParts.sumOf(String::length)}, got ${modulusBase64.length}"
+      }
+
       var offset = 0
-      for(part in originalParts) {
-        val len = part.length
-        val remaining = modulusBase64.length - offset
-        if(remaining == len) {
-          val slice = modulusBase64.substring(offset, offset + len)
-          modulusParts.add(slice)
-          offset += len
-        } else {
-          throw GradleException("Modulus length mismatch: expected $len, got $remaining at offset $offset")
-        }
+      val modulusParts = originalParts.map { part ->
+        val slice = modulusBase64.substring(offset, offset + part.length)
+        offset += part.length
+        slice
       }
 
       val replacements = mapOf(

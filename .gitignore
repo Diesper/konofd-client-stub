@@ -8,6 +8,9 @@
 # Gradle
 local.properties
 
+# Original files
+original/
+
 # Artifacts
 build/
 release/
