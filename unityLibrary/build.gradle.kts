@@ -267,6 +267,7 @@ tasks {
       copy {
         from(assetsGlobalMetadata)
         into(assetsMerged)
+        include("bin/Data/Managed/Metadata/global-metadata.dat")
         eachFile {
           logger.lifecycle("Copying global-metadata.dat: $sourcePath")
         }
