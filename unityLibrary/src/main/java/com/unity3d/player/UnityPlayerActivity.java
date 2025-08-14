@@ -1,12 +1,18 @@
 package com.unity3d.player;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Window;
+import android.widget.Toast;
+
+import jp.assasans.konofd.stub.NativeLoaderSupplemental;
 
 public class UnityPlayerActivity extends Activity implements IUnityPlayerLifecycleEvents {
   protected UnityPlayer mUnityPlayer; // don't change the name of this variable; referenced from native code
@@ -31,9 +37,49 @@ public class UnityPlayerActivity extends Activity implements IUnityPlayerLifecyc
     String cmdLine = updateUnityCommandLineArguments(getIntent().getStringExtra("unity"));
     getIntent().putExtra("unity", cmdLine);
 
+    loadNativeSupplemental(getUnityNativeLibraryPath(this));
     mUnityPlayer = new UnityPlayer(this, this);
     setContentView(mUnityPlayer);
     mUnityPlayer.requestFocus();
+  }
+
+  @SuppressLint("UnsafeDynamicallyLoadedCode")
+  private void loadNativeSupplemental(String path) {
+    String fullPath = path + "/libmain.so";
+
+    try {
+      try {
+        System.load(fullPath);
+      } catch(UnsatisfiedLinkError exception) {
+        Log.e("UnityPlayerActivity", "Failed to load native library from path: " + fullPath + ". Trying to load from default library name.");
+        System.loadLibrary("main");
+      }
+    } catch(UnsatisfiedLinkError | SecurityException exception) {
+      Log.e("UnityPlayerActivity", "Failed to load native library: " + fullPath + " - " + exception.getMessage());
+      throw new UnsatisfiedLinkError("Could not load native library: " + fullPath);
+    }
+
+    Intent intent = getIntent();
+    String serverUrl = intent.getStringExtra("server_url");
+    String publicKey = intent.getStringExtra("public_key");
+    int method = intent.getIntExtra("method", -1);
+    Boolean skipLogo = intent.hasExtra("skip_logo") ? intent.getBooleanExtra("skip_logo", false) : null;
+    if(serverUrl == null || publicKey == null || method < 0 || skipLogo == null) {
+      throw new IllegalArgumentException("Missing required parameters: server_url, public_key, method, skip_logo.");
+    }
+
+    try {
+      if(!NativeLoaderSupplemental.configure(serverUrl, publicKey, method, skipLogo)) {
+        throw new RuntimeException("NativeLoaderSupplemental.configure failed");
+      }
+    } catch(UnsatisfiedLinkError exception) {
+      Log.e("UnityPlayerActivity", "Failed to configure native loader: " + exception.getMessage());
+      Toast.makeText(this, "Failed to configure patcher, you have the official libmain.so", Toast.LENGTH_LONG).show();
+    }
+  }
+
+  private static String getUnityNativeLibraryPath(Context context) {
+    return context.getApplicationInfo().nativeLibraryDir;
   }
 
   // When Unity player unloaded move task to background

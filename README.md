@@ -20,6 +20,8 @@ of [this guide](https://github.com/Assasans/axel/blob/main/DUMPING.md)).
 Alternatively, you can [download](https://smb.assasans.dev/konofd/global-metadata/) the decrypted
 ones.
 
+You need to build the [`libmain.so` reimplementation](libmain) if you want to use custom server and don't want to statically patch `global-metadata.dat`. Put it into `unityLibrary/src/main/jniLibs/arm64-v8a/libmain.so`.
+
 ```sh
 # Assets directory can have invalid timestamps after APK extraction,
 # we need to fix them so that Gradle doesn't complain
@@ -29,11 +31,14 @@ find '<assets dir>' -exec touch {} +
 ./gradlew prepareAssets -Pkonofd.src.assets='<assets dir>'
 ./gradlew prepareGlobalMetadata -Pkonofd.src.global_metadata='<decrypted global metadata file>'
 
+# --- If you want to do static patch ---
 # konofd.patch.url is the server URL that reimplements "https://static-prd-wonder.sesisoft.com/".
 # konofd.patch.pubkey is the public RSA-1024 key of the server.
 ./gradlew patchGlobalMetadata \
   -Pkonofd.patch.url='https://axel.assasans.dev/static/' \
   -Pkonofd.patch.pubkey="$HOME/dev/rust/axel/pubkey.pem"
+# --------------------------------------
+# otherwise see libmain/README.md
 
 # Install the app using:
 ./gradlew installDebug
@@ -47,5 +52,6 @@ Some actions may cause the game to freeze, meaning an unhandled Java exception w
 
 Tested on:
 
-* Waydroid 1.5.4 with Android 11 and libhoudini
+* Waydroid 1.5.4 with Android 11 and libndk;
+* Waydroid 1.5.4 with Android 11 and libhoudini (**"hooking" mode does not work**);
 * Xiaomi Redmi Note 11 with Android 12
