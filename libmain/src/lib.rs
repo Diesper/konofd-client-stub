@@ -1,5 +1,6 @@
 #![allow(unsafe_op_in_unsafe_fn, dead_code)]
 
+mod and64_inline_hook;
 mod asm;
 mod jni_util;
 mod maps;
@@ -10,6 +11,7 @@ use std::arch::naked_asm;
 use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
+use std::ptr::null;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::time::{Duration, Instant};
@@ -21,6 +23,7 @@ use jni_sys::{
 };
 use log::{LevelFilter, debug, error, info, trace, warn};
 
+use crate::and64_inline_hook::Hook;
 use crate::asm::{encode_add_immediate, encode_adrp, encode_br};
 use crate::jni_util::show_toast;
 use crate::maps::{
@@ -169,7 +172,88 @@ pub unsafe extern "C" fn load(
       info!("not patching");
     }
     PATCH_METHOD_HOOK => {
-      do_shit_as_hook();
+      static ORIGINAL_OPEN: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
+
+      // Original function type
+      // unsigned __int64 __fastcall il2cpp::vm::MetadataLoader::LoadMetadataFile(
+      //         const char *a1,
+      //         int a2,
+      //         int a3,
+      //         int a4,
+      //         int a5,
+      //         int a6,
+      //         int a7,
+      //         int a8,
+      //         int a9,
+      //         int a10,
+      //         char a11,
+      //         int a12,
+      //         void *a13,
+      //         char a14,
+      //         int a15,
+      //         void *a16)
+      type TargetFn = extern "C" fn(
+        *const c_char,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        u8,
+        c_int,
+        *mut c_void,
+        u8,
+        c_int,
+        *mut c_void,
+      ) -> u64;
+
+      unsafe {
+        // il2cpp::vm::MetadataLoader::LoadMetadataFile
+        let target = get_virtual_address(0x00000000017b6774) as *mut c_void;
+        info!("target open address: {:p}", target as *const c_void);
+        if let Some(hook) = Hook::new(target as *mut TargetFn, my_replacement as *mut TargetFn) {
+          // Hook is active
+          let original: TargetFn = std::mem::transmute(hook.trampoline::<TargetFn>());
+          ORIGINAL_OPEN.store(original as *mut c_void, Ordering::SeqCst);
+        } else {
+          panic!("failed to create hook for LoadMetadataFile");
+        }
+      }
+
+      fn my_replacement(
+        a1: *const c_char,
+        a2: c_int,
+        a3: c_int,
+        a4: c_int,
+        a5: c_int,
+        a6: c_int,
+        a7: c_int,
+        a8: c_int,
+        a9: c_int,
+        a10: c_int,
+        a11: u8,
+        a12: c_int,
+        a13: *mut c_void,
+        a14: u8,
+        a15: c_int,
+        a16: *mut c_void,
+      ) -> u64 {
+        unsafe {
+          let original: TargetFn = std::mem::transmute(ORIGINAL_OPEN.load(Ordering::SeqCst));
+          info!("LoadMetadataFile called with a1 = {:p}", a1);
+          original(
+            a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16,
+          );
+        }
+
+        0xdead4242
+      }
+
+      // do_shit_as_hook();
     }
     PATCH_METHOD_OFF_THREAD_SCAN => {
       do_shit_as_off_thread_scan();
@@ -944,7 +1028,10 @@ const PATCH_METHOD_OFF_THREAD_SCAN: i32 = 2;
 
 static CONFIGURATION: Mutex<Option<Configuration>> = Mutex::new(None);
 
-pub unsafe extern "C" fn supplemental_verify(env: *mut JNIEnv, _activity_object: jclass) -> jboolean {
+pub unsafe extern "C" fn supplemental_verify(
+  env: *mut JNIEnv,
+  _activity_object: jclass,
+) -> jboolean {
   info!("running custom libmain.so!");
   JNI_TRUE
 }
