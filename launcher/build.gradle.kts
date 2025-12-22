@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.plugin.compose")
@@ -57,6 +60,7 @@ android {
   buildFeatures {
     viewBinding = true
     compose = true
+    buildConfig = true
   }
 
   defaultConfig {
@@ -87,16 +91,29 @@ android {
     ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
   }
 
+  signingConfigs {
+    val keystorePropertiesFile = rootProject.file("keystore.properties")
+    val keystoreProperties = Properties()
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
+
+    create("main") {
+      keyAlias = keystoreProperties["keyAlias"] as String
+      keyPassword = keystoreProperties["keyPassword"] as String
+      storeFile = file(keystoreProperties["storeFile"] as String)
+      storePassword = keystoreProperties["storePassword"] as String
+    }
+  }
+
   buildTypes {
     debug {
       isMinifyEnabled = false
-      setProguardFiles(listOf(getDefaultProguardFile("proguard-android.txt")))
-      signingConfig = signingConfigs.getByName("debug")
+      setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt")))
+      signingConfig = signingConfigs.getByName("main")
     }
     release {
       isMinifyEnabled = false
-      setProguardFiles(listOf(getDefaultProguardFile("proguard-android.txt")))
-      signingConfig = signingConfigs.getByName("debug")
+      setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt")))
+      signingConfig = signingConfigs.getByName("main")
     }
   }
 

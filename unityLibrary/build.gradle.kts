@@ -60,13 +60,11 @@ android {
   buildTypes {
     debug {
       isMinifyEnabled = false
-      setProguardFiles(listOf(getDefaultProguardFile("proguard-android.txt")))
-      signingConfig = signingConfigs.getByName("debug")
+      setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt")))
     }
     release {
       isMinifyEnabled = false
-      setProguardFiles(listOf(getDefaultProguardFile("proguard-android.txt")))
-      signingConfig = signingConfigs.getByName("debug")
+      setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt")))
     }
   }
 

@@ -7,6 +7,7 @@
 
 # Gradle
 local.properties
+keystore.properties
 
 # Original files
 original/

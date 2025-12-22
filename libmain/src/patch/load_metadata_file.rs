@@ -161,7 +161,7 @@ pub fn load_metadata_file_hook() {
 
     let replacements = processor.generate_replacements().unwrap();
     for (original, replacement) in &replacements {
-      info!("{} -> {}", original, replacement);
+      info!("replacing public key part {:?} -> {:?}", original, replacement);
       editor
         .replace_string(original, replacement)
         .expect("failed to replace public key part");

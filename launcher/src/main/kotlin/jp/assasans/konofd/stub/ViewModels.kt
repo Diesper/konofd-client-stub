@@ -57,12 +57,15 @@ private fun PatchMethod.prefValue(): String = when(this) {
   PatchMethod.LoadMetadataFileHook -> "loadMetadataFileHook"
 }
 
-private fun methodFromPref(value: String?): PatchMethod = when(value?.lowercase()) {
+private fun methodFromPref(value: String?): PatchMethod = when(value) {
   "none" -> PatchMethod.None
   "hook" -> PatchMethod.Hook
   "scan" -> PatchMethod.Scan
   "loadMetadataFileHook" -> PatchMethod.LoadMetadataFileHook
-  else -> PatchMethod.Hook
+  else -> {
+    Log.w("LauncherViewModel", "Unknown patch method in prefs: $value")
+    PatchMethod.None
+  }
 }
 
 data class LauncherState(
@@ -72,6 +75,7 @@ data class LauncherState(
 
   val serverVerification: ServerVerification? = null,
   val dialogVisible: Boolean = false,
+  val autoLaunchTimeSeconds: Int? = null, // Only stores the initial value
 
   val serverUrlHistory: List<String> = emptyList(),
 )
@@ -102,9 +106,6 @@ class LauncherViewModel(
   private val _state = MutableStateFlow(LauncherState())
   val state: StateFlow<LauncherState> = _state.asStateFlow()
 
-  private val _dialogTimeToLaunch = MutableStateFlow<Duration?>(null)
-  val dialogTimeToLaunch: StateFlow<Duration?> = _dialogTimeToLaunch.asStateFlow()
-
   val serverUrlState = TextFieldState(initialText = DEFAULT_SERVER_URL)
   val authTokenState = TextFieldState()
 
@@ -129,24 +130,6 @@ class LauncherViewModel(
     if(_state.value.isAutoLaunchEnabled) {
       println("Auto-launch enabled, checking server...")
       checkServer(isAutoLaunch = true)
-    }
-  }
-
-  fun setTimeToLaunch(initial: Duration) {
-    _dialogTimeToLaunch.value = initial
-    viewModelScope.launch {
-      while(true) {
-        delay(1.seconds)
-        val current = _dialogTimeToLaunch.value
-        println("Current time to launch: $current")
-        if(current == null) break
-        if(current <= 1.seconds) {
-          _dialogTimeToLaunch.value = Duration.ZERO
-          launchGame()
-          break
-        }
-        _dialogTimeToLaunch.value = current - 1.seconds
-      }
     }
   }
 
@@ -177,6 +160,11 @@ class LauncherViewModel(
   fun setLaunchMethod(method: PatchMethod) {
     _state.value = _state.value.copy(method = method)
     sharedPrefs.edit { putString(PREF_METHOD, method.prefValue()) }
+    if(method == PatchMethod.None) {
+      _state.value = _state.value.copy(
+        serverVerification = ServerVerification.SuccessNoServer
+      )
+    }
   }
 
   fun setSkipLogoEnabled(value: Boolean) {
@@ -207,10 +195,10 @@ class LauncherViewModel(
   fun checkServer(isAutoLaunch: Boolean = false) {
     if(_state.value.method == PatchMethod.None) {
       _state.value = _state.value.copy(
-        serverVerification = ServerVerification.SuccessNoServer
+        serverVerification = ServerVerification.SuccessNoServer,
+        autoLaunchTimeSeconds = if(isAutoLaunch) 3 else 10
       )
       setDialogVisible(true)
-      setTimeToLaunch(if(isAutoLaunch) 3.seconds else 10.seconds)
       return
     }
 
@@ -232,11 +220,13 @@ class LauncherViewModel(
 
       val result = verifyServer(serverUrlState.text.toString().trim())
       _state.value = _state.value.copy(
-        serverVerification = result
+        serverVerification = result,
+        autoLaunchTimeSeconds = if(result is ServerVerification.Success) {
+          if(isAutoLaunch) 3 else 10
+        } else null
       )
 
       if(result is ServerVerification.Success) {
-        setTimeToLaunch(if(isAutoLaunch) 3.seconds else 10.seconds)
         addServerUrlToHistory(result.url)
       }
     }
@@ -261,7 +251,8 @@ class LauncherViewModel(
     serverCheckJob?.cancel()
     serverCheckJob = null
     _state.value = _state.value.copy(
-      serverVerification = null
+      serverVerification = null,
+      autoLaunchTimeSeconds = null
     )
     setDialogVisible(false)
   }
@@ -281,8 +272,6 @@ class LauncherViewModel(
   }
 
   fun launchGame() {
-    _dialogTimeToLaunch.value = null
-
     val currentState = _state.value
 
     val verification = currentState.serverVerification
@@ -314,7 +303,7 @@ class LauncherViewModel(
   fun setDialogVisible(visible: Boolean) {
     _state.value = _state.value.copy(dialogVisible = visible)
     if(!visible) {
-      _dialogTimeToLaunch.value = null
+      _state.value = _state.value.copy(autoLaunchTimeSeconds = null)
       println("Dialog closed, resetting time to launch")
     }
   }
