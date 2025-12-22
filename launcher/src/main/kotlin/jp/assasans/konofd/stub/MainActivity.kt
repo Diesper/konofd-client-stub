@@ -144,6 +144,7 @@ class AndroidGameLauncher(
         PatchMethod.None -> 0
         PatchMethod.Hook -> 1
         PatchMethod.Scan -> 2
+        PatchMethod.LoadMetadataFileHook -> 3
       }
     )
     intent.putExtra("skip_logo", skipLogo)
@@ -371,29 +372,16 @@ private fun PatchingMethodSelection(
   viewModel: LauncherViewModel,
 ) {
   Column {
-    RadioButtonWithText(
-      selected = selectedMethod == PatchMethod.None,
-      onClick = { onMethodChange(PatchMethod.None) },
-      title = "None",
-      subtitle = "Run the game as-is without any patching.",
-      isCompact = isCompact
-    )
-    RadioButtonWithText(
-      selected = selectedMethod == PatchMethod.Hook,
-      onClick = { onMethodChange(PatchMethod.Hook) },
-      title = "Hooking",
-      subtitle = "Dynamically patch libil2cpp.so to run patching when constants were just loaded. Does not cause a connection error. Does not work with libhoudini.",
-      isCompact = isCompact,
-      enabled = viewModel.isCustomLoader
-    )
-    RadioButtonWithText(
-      selected = selectedMethod == PatchMethod.Scan,
-      onClick = { onMethodChange(PatchMethod.Scan) },
-      title = "Off-thread scan",
-      subtitle = "Start a background thread and wait until constants are loaded. Does cause a one-time connection error.",
-      isCompact = isCompact,
-      enabled = viewModel.isCustomLoader
-    )
+    PatchMethodRegistry.availableMethods.forEach { methodInfo ->
+      RadioButtonWithText(
+        selected = selectedMethod == methodInfo.method,
+        onClick = { onMethodChange(methodInfo.method) },
+        title = methodInfo.title,
+        subtitle = methodInfo.subtitle,
+        isCompact = isCompact,
+        enabled = !methodInfo.requiresCustomLoader || viewModel.isCustomLoader
+      )
+    }
 
     Spacer(modifier = Modifier.height(8.dp))
 

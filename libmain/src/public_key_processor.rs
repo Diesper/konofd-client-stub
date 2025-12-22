@@ -44,6 +44,12 @@ impl PublicKeyProcessor {
     Ok(Self { modulus_base64 })
   }
 
+  pub fn from_modulus_base64(modulus_base64: &str) -> Self {
+    Self {
+      modulus_base64: modulus_base64.to_string(),
+    }
+  }
+
   pub fn modulus_base64(&self) -> &str {
     &self.modulus_base64
   }

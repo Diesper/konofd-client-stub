@@ -9,9 +9,9 @@ crate-type = ["cdylib"]
 
 # My C version was 8 KiB...
 [profile.release]
-# strip = true
-# lto = "fat"
-# codegen-units = 1
+strip = true
+lto = "fat"
+codegen-units = 1
 panic = "abort"
 
 [dependencies]

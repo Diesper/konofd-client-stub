@@ -534,7 +534,7 @@ mod arm64_hook {
 
     const MASK: u64 = 0x03ffffff;
     let callback = inp as i64;
-    let mut pc_offset = (callback - outp as i64) >> 2;
+    let pc_offset = (callback - outp as i64) >> 2;
 
     if pc_offset.abs() >= (MASK >> 1) as i64 {
       if (outp.add(2) as usize & 7) != 0 {
@@ -761,7 +761,7 @@ mod arm64_hook {
   }
 
   // Public exports
-  pub use {a64_hook_function as hook_function, a64_hook_function_v as hook_function_v};
+  
 }
 
 #[cfg(target_arch = "aarch64")]

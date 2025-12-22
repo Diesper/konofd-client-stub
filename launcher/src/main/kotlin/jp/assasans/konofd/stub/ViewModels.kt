@@ -44,18 +44,24 @@ private const val DEFAULT_AUTO_LAUNCH = false
 private const val DEFAULT_SERVER_URL = "https://axel.assasans.dev/static/"
 
 enum class PatchMethod {
-  None, Hook, Scan
+  None,
+  Hook,
+  Scan,
+  LoadMetadataFileHook,
 }
 
 private fun PatchMethod.prefValue(): String = when(this) {
   PatchMethod.None -> "none"
   PatchMethod.Hook -> "hook"
   PatchMethod.Scan -> "scan"
+  PatchMethod.LoadMetadataFileHook -> "loadMetadataFileHook"
 }
 
 private fun methodFromPref(value: String?): PatchMethod = when(value?.lowercase()) {
   "none" -> PatchMethod.None
+  "hook" -> PatchMethod.Hook
   "scan" -> PatchMethod.Scan
+  "loadMetadataFileHook" -> PatchMethod.LoadMetadataFileHook
   else -> PatchMethod.Hook
 }
 

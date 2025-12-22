@@ -10,10 +10,6 @@ mod metadata;
 mod string_literal;
 
 pub use editor::*;
-pub use error::*;
-pub use header::*;
-pub use metadata::*;
-pub use string_literal::*;
 
 #[cfg(test)]
 mod tests {

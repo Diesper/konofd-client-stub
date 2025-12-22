@@ -67,8 +67,8 @@ android {
       // noinspection ChromeOsAbiSupport - game does not support x86_64
       abiFilters += "arm64-v8a"
     }
-    versionCode = 369
-    versionName = "4.11.5/stub-1.0.0"
+    versionCode = 370
+    versionName = "4.11.5/stub-1.1.0"
   }
 
   lint {
