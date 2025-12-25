@@ -3,7 +3,6 @@ package jp.assasans.konofd.stub
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Base64
 import android.util.Log
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
@@ -29,8 +28,7 @@ import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.interfaces.RSAPublicKey
 import java.security.spec.X509EncodedKeySpec
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
+import kotlin.io.encoding.Base64
 
 private const val PREFS_NAME = "launcher_settings"
 private const val PREF_METHOD = "method"
@@ -42,6 +40,12 @@ private const val PREF_SERVER_URL_HISTORY = "server_url_history"
 private const val DEFAULT_SKIP_LOGO = true
 private const val DEFAULT_AUTO_LAUNCH = false
 private const val DEFAULT_SERVER_URL = "https://axel.assasans.dev/static/"
+
+// Retry configuration constants
+private const val MAX_RETRY_ATTEMPTS = 5
+private const val INITIAL_RETRY_DELAY_MS = 1000L
+private const val MAX_RETRY_DELAY_MS = 30000L
+private const val JITTER_FACTOR = 0.3
 
 enum class PatchMethod {
   None,
@@ -91,7 +95,12 @@ sealed class ServerVerification {
 
   data object SuccessNoServer : ServerVerification()
 
-  data class Failure(val exception: Throwable) : ServerVerification()
+  data class Failure(
+    val exception: Throwable,
+    val retryAttempt: Int = 0,
+    val maxRetries: Int = MAX_RETRY_ATTEMPTS,
+    val retryDelayMs: Long = 0
+  ) : ServerVerification()
 }
 
 class LauncherViewModel(
@@ -218,7 +227,20 @@ class LauncherViewModel(
       )
       setDialogVisible(true)
 
-      val result = verifyServer(serverUrlState.text.toString().trim())
+      val result = verifyServerWithRetry(
+        serverUrlState.text.toString().trim(),
+        onRetry = { attempt, exception, delayMs ->
+          _state.value = _state.value.copy(
+            serverVerification = ServerVerification.Failure(
+              exception,
+              retryAttempt = attempt,
+              maxRetries = MAX_RETRY_ATTEMPTS,
+              retryDelayMs = delayMs
+            )
+          )
+        }
+      )
+
       _state.value = _state.value.copy(
         serverVerification = result,
         autoLaunchTimeSeconds = if(result is ServerVerification.Success) {
@@ -337,13 +359,13 @@ fun decodePemToDer(pem: String): ByteArray {
     .replace("-----BEGIN PUBLIC KEY-----", "")
     .replace("-----END PUBLIC KEY-----", "")
     .replace("\\s".toRegex(), "")
-  return Base64.decode(base64, Base64.DEFAULT)
+  return Base64.decode(base64)
 }
 
 fun extractModulusFromPem(der: ByteArray): String {
   val publicKey = KeyFactory.getInstance("RSA")
     .generatePublic(X509EncodedKeySpec(der)) as RSAPublicKey
-  return Base64.encodeToString(publicKey.modulus.toByteArray(), Base64.NO_WRAP)
+  return Base64.encode(publicKey.modulus.toByteArray())
 }
 
 fun isValidServerUrl(url: String): Boolean {
@@ -357,24 +379,58 @@ fun isValidServerUrl(url: String): Boolean {
   }
 }
 
+suspend fun verifyServerWithRetry(
+  baseUrl: String,
+  onRetry: (attempt: Int, exception: Exception, delayMs: Long) -> Unit
+): ServerVerification = withContext(Dispatchers.IO) {
+  var attempt = 0
+  var lastException: Exception? = null
+
+  while(attempt < MAX_RETRY_ATTEMPTS) {
+    try {
+      return@withContext verifyServer(baseUrl)
+    } catch(exception: Exception) {
+      lastException = exception
+      attempt++
+
+      if(attempt < MAX_RETRY_ATTEMPTS) {
+        // Calculate exponential backoff with jitter
+        val baseDelay = (INITIAL_RETRY_DELAY_MS * (1 shl (attempt - 1)))
+          .coerceAtMost(MAX_RETRY_DELAY_MS)
+        val jitter = (baseDelay * JITTER_FACTOR * (Math.random() - 0.5)).toLong()
+        val delayMs = (baseDelay + jitter).coerceAtLeast(0)
+
+        Log.w(
+          "LauncherViewModel",
+          "Server verification failed (attempt $attempt/$MAX_RETRY_ATTEMPTS), retrying in ${delayMs}ms: ${exception.message}"
+        )
+        onRetry(attempt, exception, delayMs)
+
+        delay(delayMs)
+      }
+    }
+  }
+
+  ServerVerification.Failure(
+    lastException ?: Exception("Unknown error"),
+    retryAttempt = MAX_RETRY_ATTEMPTS,
+    maxRetries = MAX_RETRY_ATTEMPTS
+  )
+}
+
 suspend fun verifyServer(baseUrl: String): ServerVerification = withContext(Dispatchers.IO) {
   val base = baseUrl.trim().trimEnd('/')
-  try {
-    val publicKeyUrl = "$base/public.pem"
-    val pem = makeHttpRequest(publicKeyUrl)
+  val publicKeyUrl = "$base/public.pem"
+  val pem = makeHttpRequest(publicKeyUrl)
 
-    // Parse modulus + fingerprint
-    val modulus = extractModulusFromPem(decodePemToDer(pem))
+  // Parse modulus + fingerprint
+  val modulus = extractModulusFromPem(decodePemToDer(pem))
 
-    ServerVerification.Success(
-      url = base,
-      pem = pem,
-      modulusBase64 = modulus,
-    )
-  } catch(exception: Exception) {
-    exception.printStackTrace()
-    ServerVerification.Failure(exception)
-  }
+  ServerVerification.Success(
+    url = base,
+    pem = pem,
+    modulusBase64 = modulus,
+  )
 }
 
 suspend fun makeHttpRequest(urlString: String): String {

@@ -19,10 +19,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -56,6 +60,10 @@ fun MainScreen(
   val isServerSectionVisible = state.method != PatchMethod.None
   val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
   val ownContentPadding = if(isLandscape) 16.dp else 16.dp
+
+  val token = remember { getStringFromPreferences("uuid", context) }
+  val userId = remember { getStringFromPreferences("userno", context) }
+  var showTokenDialog by remember { mutableStateOf(false) }
 
   Box(
     modifier = modifier
@@ -125,6 +133,16 @@ fun MainScreen(
             contentPadding = PaddingValues(vertical = 16.dp)
           ) {
             Text("Launch Game")
+          }
+
+          Spacer(modifier = Modifier.height(8.dp))
+
+          OutlinedButton(
+            onClick = { showTokenDialog = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = token != null && userId != null
+          ) {
+            Text("View token")
           }
 
           if(!viewModel.isCustomLoader) {
@@ -212,6 +230,16 @@ fun MainScreen(
           Text("Launch Game")
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(
+          onClick = { showTokenDialog = true },
+          modifier = Modifier.fillMaxWidth(),
+          enabled = token != null && userId != null
+        ) {
+          Text("View token")
+        }
+
         if(!viewModel.isCustomLoader) {
           Text(
             text = "Custom libmain.so is not available. Patching is not available.",
@@ -246,6 +274,17 @@ fun MainScreen(
       onCancel = { viewModel.cancelServerCheck() },
       onOk = { viewModel.closeServerCheckDialog() },
       onLaunch = { viewModel.launchGame() }
+    )
+  }
+
+  if(showTokenDialog && token != null && userId != null) {
+    val hasConfirmed = remember { mutableStateOf(false) }
+    TokenInfoDialog(
+      token = token,
+      userId = userId,
+      hasConfirmed = hasConfirmed.value,
+      onConfirm = { hasConfirmed.value = true },
+      onDismiss = { showTokenDialog = false }
     )
   }
 }

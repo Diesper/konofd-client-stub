@@ -26,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
@@ -36,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.delay
 
 @Composable
 @Preview
@@ -72,6 +74,26 @@ fun PublicKeyDialog(
 ) {
   var remainingSeconds by remember { mutableIntStateOf(initialTimeSeconds ?: 0) }
   var progress by remember { mutableFloatStateOf(0f) }
+
+  // State for retry delay countdown
+  var retryDelayRemainingMs by remember { mutableLongStateOf(0L) }
+
+  // Update retry delay remaining when serverVerification changes
+  LaunchedEffect(serverVerification) {
+    if (serverVerification is ServerVerification.Failure && serverVerification.retryDelayMs > 0) {
+      retryDelayRemainingMs = serverVerification.retryDelayMs
+      val startTime = System.currentTimeMillis()
+      val totalDelay = serverVerification.retryDelayMs
+
+      while (retryDelayRemainingMs > 0) {
+        delay(100) // Update every 100ms for smooth countdown
+        val elapsed = System.currentTimeMillis() - startTime
+        retryDelayRemainingMs = (totalDelay - elapsed).coerceAtLeast(0)
+      }
+    } else {
+      retryDelayRemainingMs = 0
+    }
+  }
 
   LaunchedEffect(initialTimeSeconds) {
     if(initialTimeSeconds != null && initialTimeSeconds > 0) {
@@ -118,7 +140,13 @@ fun PublicKeyDialog(
         Text(
           text = when(serverVerification) {
             is ServerVerification.Loading -> "Loading server configuration…"
-            is ServerVerification.Failure -> "Failed to load server configuration"
+            is ServerVerification.Failure -> {
+              if (serverVerification.retryAttempt > 0 && serverVerification.retryAttempt < serverVerification.maxRetries) {
+                "Loading server configuration…"
+              } else {
+                "Failed to load server configuration"
+              }
+            }
             is ServerVerification.Success -> "Server configuration loaded successfully"
             is ServerVerification.SuccessNoServer -> "Starting game without custom server"
           },
@@ -136,6 +164,32 @@ fun PublicKeyDialog(
           }
 
           is ServerVerification.Failure -> {
+            if (serverVerification.retryAttempt > 0 && serverVerification.retryAttempt < serverVerification.maxRetries) {
+              CircularProgressIndicator(
+                modifier = Modifier.size(48.dp)
+              )
+              Spacer(modifier = Modifier.height(8.dp))
+
+              Text(
+                text = "Retry ${serverVerification.retryAttempt}/${serverVerification.maxRetries}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+              )
+
+              if (retryDelayRemainingMs > 0) {
+                val remainingSecondsDisplay = ((retryDelayRemainingMs + 999) / 1000).toInt()
+                Text(
+                  text = "Retrying in ${remainingSecondsDisplay}s",
+                  style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+                  textAlign = TextAlign.Center
+                )
+              }
+
+              Spacer(modifier = Modifier.height(8.dp))
+            }
+
             Text(
               text = serverVerification.exception.toString(),
               style = MaterialTheme.typography.bodySmall,
@@ -227,7 +281,16 @@ fun PublicKeyDialog(
             }
 
             is ServerVerification.Failure -> {
-              TextButton(onClick = { onOk() }) { Text("OK") }
+              if (serverVerification.retryAttempt > 0 && serverVerification.retryAttempt < serverVerification.maxRetries) {
+                TextButton(
+                  onClick = onCancel,
+                  modifier = Modifier.padding(end = 8.dp)
+                ) {
+                  Text("Cancel")
+                }
+              } else {
+                TextButton(onClick = { onOk() }) { Text("OK") }
+              }
             }
 
             is ServerVerification.Success, is ServerVerification.SuccessNoServer -> {

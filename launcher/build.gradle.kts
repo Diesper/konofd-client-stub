@@ -72,7 +72,7 @@ android {
       abiFilters += "arm64-v8a"
     }
     versionCode = 370
-    versionName = "4.11.5/stub-1.1.0"
+    versionName = "4.11.5/stub-1.1.1"
   }
 
   lint {
