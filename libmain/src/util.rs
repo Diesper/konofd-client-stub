@@ -6,7 +6,7 @@ pub fn str_to_utf16_bytes(input: &str) -> Vec<u8> {
 
   for word in utf16 {
     utf16_bytes.push((word >> 8) as u8);
-    utf16_bytes.push((word & 0xFF) as u8);
+    utf16_bytes.push((word & 0xff) as u8);
   }
 
   utf16_bytes
@@ -74,7 +74,10 @@ pub fn split_bytes_by_sizes(
   Ok(result)
 }
 
-pub fn split_string_by_sizes(input: &str, sizes: &[&str]) -> Result<HashMap<String, String>, String> {
+pub fn split_string_by_sizes(
+  input: &str,
+  sizes: &[&str],
+) -> Result<HashMap<String, String>, String> {
   // Convert size strings to actual lengths
   let lengths: Vec<usize> = sizes.iter().map(|s| s.len()).collect();
 

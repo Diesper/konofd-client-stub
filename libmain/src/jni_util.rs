@@ -1,9 +1,11 @@
-use crate::{CONFIGURATION, JAVA_VM};
-use jni_sys::{JNI_FALSE, JNIEnv};
-use log::{trace, warn};
 use std::ffi::CString;
 use std::os::raw::c_void;
 use std::ptr;
+
+use jni_sys::{JNI_FALSE, JNIEnv};
+use log::{trace, warn};
+
+use crate::{CONFIGURATION, JAVA_VM};
 
 pub fn show_toast(message: &str) {
   if let Err(error) = try_show_toast(message) {

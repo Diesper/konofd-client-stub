@@ -462,7 +462,7 @@ mod arm64_hook {
         current_idx = ctxp.get_and_set_current_index(*inpp, *outpp);
         let lsb_bytes = ((ins << 1) >> 30) as i32;
         let absolute_addr = ((*inpp as i64) & !0xfff)
-          + (((((((ins << MSB) as i32 >> (MSB + LSB - 2)) & !3) | lsb_bytes) as i64) << 12) as i64);
+          + ((((((ins << MSB) as i32 >> (MSB + LSB - 2)) & !3) | lsb_bytes) as i64) << 12);
 
         if ctxp.is_in_fixing_range(absolute_addr) {
           let ref_idx = ctxp.get_ref_ins_index(absolute_addr);
@@ -554,7 +554,7 @@ mod arm64_hook {
       outp = outp.add(1);
     }
 
-    let total = (outp as usize - outp_base as usize) as usize;
+    let total = outp as usize - outp_base as usize;
     flush_cache(outp_base as *mut u8, total);
   }
 
@@ -759,9 +759,6 @@ mod arm64_hook {
       }
     }
   }
-
-  // Public exports
-  
 }
 
 #[cfg(target_arch = "aarch64")]

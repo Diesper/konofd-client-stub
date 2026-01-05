@@ -49,31 +49,27 @@ private const val JITTER_FACTOR = 0.3
 
 enum class PatchMethod {
   None,
-  Hook,
-  Scan,
   LoadMetadataFileHook,
 }
 
+private val DEFAULT_PATCH_METHOD = PatchMethod.LoadMetadataFileHook
+
 private fun PatchMethod.prefValue(): String = when(this) {
   PatchMethod.None -> "none"
-  PatchMethod.Hook -> "hook"
-  PatchMethod.Scan -> "scan"
   PatchMethod.LoadMetadataFileHook -> "loadMetadataFileHook"
 }
 
 private fun methodFromPref(value: String?): PatchMethod = when(value) {
   "none" -> PatchMethod.None
-  "hook" -> PatchMethod.Hook
-  "scan" -> PatchMethod.Scan
   "loadMetadataFileHook" -> PatchMethod.LoadMetadataFileHook
   else -> {
     Log.w("LauncherViewModel", "Unknown patch method in prefs: $value")
-    PatchMethod.None
+    DEFAULT_PATCH_METHOD
   }
 }
 
 data class LauncherState(
-  val method: PatchMethod = PatchMethod.Hook,
+  val method: PatchMethod = DEFAULT_PATCH_METHOD,
   val isSkipLogoEnabled: Boolean = DEFAULT_SKIP_LOGO,
   val isAutoLaunchEnabled: Boolean = DEFAULT_AUTO_LAUNCH,
 
@@ -143,7 +139,7 @@ class LauncherViewModel(
   }
 
   private fun loadInitialData() {
-    val method = methodFromPref(sharedPrefs.getString(PREF_METHOD, "hook"))
+    val method = methodFromPref(sharedPrefs.getString(PREF_METHOD, DEFAULT_PATCH_METHOD.prefValue()))
     val skipLogo = sharedPrefs.getBoolean(PREF_SKIP_LOGO, DEFAULT_SKIP_LOGO)
     val autoLaunch = sharedPrefs.getBoolean(PREF_AUTO_LAUNCH, DEFAULT_AUTO_LAUNCH)
     val serverUrl =

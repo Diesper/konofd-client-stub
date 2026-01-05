@@ -66,8 +66,8 @@ class AndroidGameLauncher(
       "method",
       when(patchMethod) {
         PatchMethod.None -> 0
-        PatchMethod.Hook -> 1
-        PatchMethod.Scan -> 2
+        // REMOVED: 1 (manual hook)
+        // REMOVED: 2 (off-thread scan)
         PatchMethod.LoadMetadataFileHook -> 3
       }
     )

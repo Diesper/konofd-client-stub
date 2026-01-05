@@ -1,35 +1,26 @@
 #![allow(unsafe_op_in_unsafe_fn, dead_code)]
 
 mod and64_inline_hook;
-mod asm;
 mod global_metadata;
 mod jni_util;
 mod maps;
+mod patch;
 mod public_key_processor;
 mod util;
-mod patch;
 
-use std::collections::{HashMap, HashSet};
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicPtr, Ordering};
-use std::{iter, mem, panic, ptr, str};
+use std::{mem, panic, ptr, str};
 
 use android_logger::Config;
 use jni_sys::{
   JNI_TRUE, JNI_VERSION_1_6, JNIEnv, JNINativeMethod, JavaVM, jboolean, jclass, jint, jstring,
 };
-use log::{LevelFilter, debug, error, info, trace, warn};
+use log::{LevelFilter, debug, error, info};
 
-use crate::jni_util::show_toast;
-use crate::maps::{
-  MemoryRegion, get_suitable_regions, read_memory_regions, search_byte_sequence, write_to_memory,
-};
-use crate::util::{
-  bytes_to_human_readable, pad_to_utf16_bytes, split_bytes_by_sizes, split_string_by_sizes,
-  str_to_utf16_bytes,
-};
+use crate::maps::{MemoryRegion, read_memory_regions};
 
 #[allow(non_camel_case_types)]
 type JNI_OnLoad_t = unsafe extern "C" fn(vm: *mut JavaVM, reserved: *mut c_void) -> jint;
@@ -163,16 +154,15 @@ pub unsafe extern "C" fn load(
   }
 
   let method = CONFIGURATION.lock().unwrap().as_ref().unwrap().method;
+  #[allow(deprecated)]
   match method {
     PATCH_METHOD_NONE => {
       info!("not patching");
     }
-    PATCH_METHOD_HOOK => patch::manual_hook(),
-    PATCH_METHOD_OFF_THREAD_SCAN => patch::off_thread_scan(),
+    PATCH_METHOD_HOOK => panic!("manual hooking method was removed"),
+    PATCH_METHOD_OFF_THREAD_SCAN => panic!("off-thread scan method was removed"),
     PATCH_METHOD_LOAD_METADATA_FILE_HOOK => patch::load_metadata_file_hook(),
-    _ => {
-      panic!("unknown patch method: {method}")
-    }
+    _ => panic!("unknown patch method: {method}"),
   }
 
   JNI_TRUE
@@ -251,8 +241,6 @@ pub fn get_virtual_address(address: usize) -> usize {
   panic!("virtual address not found for address: 0x{:x}", address);
 }
 
-
-
 unsafe fn os_arch_clear_cache<T>(start: *const T, end: *const T) -> bool {
   let start = start as u64;
   let end = end as u64;
@@ -306,281 +294,6 @@ unsafe fn os_arch_clear_cache<T>(start: *const T, end: *const T) -> bool {
   true
 }
 
-// See [CodeStage.AntiCheat.ObscuredTypes.ObscuredString$$.cctor]
-static OBSCURED_STRING_KEY: &str = "4441";
-
-fn obscured_string_xor(value: &str) -> Vec<u8> {
-  let key_bytes = OBSCURED_STRING_KEY.as_bytes();
-  value
-    .bytes()
-    .enumerate()
-    .map(|(index, byte)| byte ^ key_bytes[index % key_bytes.len()])
-    .collect()
-}
-
-fn patch() {
-  let new_static_url = CONFIGURATION
-    .lock()
-    .unwrap()
-    .as_ref()
-    .unwrap()
-    .server_url
-    .clone();
-  let new_static_url = format!(
-    "{:/<width$}",
-    new_static_url,
-    width = ORIGINAL_STATIC_URL.len()
-  );
-
-  let new_public_key = CONFIGURATION
-    .lock()
-    .unwrap()
-    .as_ref()
-    .unwrap()
-    .public_key
-    .clone();
-
-  let existing_regions = EXISTING_REGIONS.lock().unwrap();
-  let current_regions = get_suitable_regions();
-
-  let excluded_regions: HashSet<_> = existing_regions
-    .iter()
-    .map(|region| (region.start, region.end))
-    .collect();
-  let regions: Vec<_> = current_regions
-    .into_iter()
-    .filter(|region| !excluded_regions.contains(&(region.start, region.end)))
-    // .filter(|region| region.size() >= 5242880)
-    .filter(|region| region.size() < 33554432)
-    .filter(|region| {
-      region.pathname.as_deref() == Some("[anon:libc_malloc]") || region.pathname.is_none()
-    })
-    .collect();
-  info!(
-    "{} regions to scan, {}",
-    regions.len(),
-    bytes_to_human_readable(regions.iter().map(|r| r.size() as u64).sum())
-  );
-
-  for region in &regions {
-    debug!(
-      "region: {:?} (size: {})",
-      region,
-      bytes_to_human_readable(region.size() as u64)
-    );
-  }
-
-  let key_parts_plain = split_string_by_sizes(
-    // "z7VeNsuYLX//cx/oMxEMxKgvo4/4wusB3QbV3ZLw61AIClNSjvMNbIFBpZxJJ9AinyGXe6C1lmqChfrlhBtODwZugqKeFaAMRN9UGlDRySkhJZkMyeufU8kBBEvHk440KMvYTgCXbwYJKjqXyM9KOgXno8O6g3OEsLXIwGMevg0=",
-    &new_public_key,
-    &[
-      "6dNRoG04n56HX2LiOA",
-      "kpCC9fgjxvMKDyZGyx",
-      "35Owh/sOU8HjpOdGHB",
-      "y96ytzw9WMxzyvJkl2",
-      "9Q82mc4y7zKy3SkchV",
-      "C16mnckCO26kf6Wn4X",
-      "e5lN0i7Ot5kIueWY2i",
-      "oo8iRudj/EbNdumTU8",
-      "I7oC7dWuvIEovK4eDJ",
-      "dFJO2tzZ8=",
-    ],
-  )
-  .unwrap();
-
-  let key_parts = split_bytes_by_sizes(
-    // b"z7VeNsuYLX//cx/oMxEMxKgvo4/4wusB3QbV3ZLw61AIClNSjvMNbIFBpZxJJ9AinyGXe6C1lmqChfrlhBtODwZugqKeFaAMRN9UGlDRySkhJZkMyeufU8kBBEvHk440KMvYTgCXbwYJKjqXyM9KOgXno8O6g3OEsLXIwGMevg0=",
-    new_public_key.as_bytes(),
-    &[
-      &obscured_string_xor("6dNRoG04n56HX2LiOA"),
-      &obscured_string_xor("kpCC9fgjxvMKDyZGyx"),
-      &obscured_string_xor("35Owh/sOU8HjpOdGHB"),
-      &obscured_string_xor("y96ytzw9WMxzyvJkl2"),
-      &obscured_string_xor("9Q82mc4y7zKy3SkchV"),
-      &obscured_string_xor("C16mnckCO26kf6Wn4X"),
-      &obscured_string_xor("e5lN0i7Ot5kIueWY2i"),
-      &obscured_string_xor("oo8iRudj/EbNdumTU8"),
-      &obscured_string_xor("I7oC7dWuvIEovK4eDJ"),
-      &obscured_string_xor("dFJO2tzZ8="),
-    ],
-  )
-  .unwrap();
-
-  let mut key_parts_plain = key_parts_plain
-    .iter()
-    .map(|(original_part, patched_part)| (original_part, (patched_part, 0)))
-    .collect::<HashMap<_, _>>();
-
-  let mut key_parts = key_parts
-    .iter()
-    .map(|(original_part, patched_part)| {
-      (
-        original_part,
-        (
-          obscured_string_xor(str::from_utf8(&patched_part).unwrap()),
-          0,
-        ),
-      )
-    })
-    .collect::<HashMap<_, _>>();
-
-  let mut found_original = 0;
-  for region in regions {
-    trace!(
-      "searching for static url in {} of {region:?}",
-      bytes_to_human_readable(region.size() as u64)
-    );
-
-    let addresses = match search_byte_sequence(&region, &str_to_utf16_bytes(&ORIGINAL_STATIC_URL)) {
-      Ok(addresses) => addresses,
-      Err(error) => {
-        warn!("error searching memory region {:?}: {}", region, error);
-        continue;
-      }
-    };
-
-    for address in &addresses {
-      debug!(
-        "found static url at address: 0x{:x} in region {:?} (size: {})",
-        address,
-        region,
-        bytes_to_human_readable(region.size() as u64)
-      );
-
-      let region_bytes =
-        unsafe { std::slice::from_raw_parts(region.start as *const u8, region.size()) };
-      trace!(
-        "region bytes: {}",
-        region_bytes
-          .iter()
-          .take(32)
-          .map(|b| format!("{:02x}", b))
-          .collect::<Vec<_>>()
-          .join(" ")
-      );
-
-      let virtual_address = region.start + address;
-      match write_to_memory(virtual_address, &str_to_utf16_bytes(&new_static_url)) {
-        Ok(_) => {
-          trace!(
-            "successfully wrote to memory at address 0x{:x}",
-            virtual_address
-          );
-          found_original += 1;
-        }
-        Err(error) => {
-          error!("error writing to memory: {}", error);
-        }
-      }
-    }
-
-    for (index, (original_part, (patched_part, times))) in key_parts_plain.iter_mut().enumerate() {
-      trace!("searching for public key part {}", index + 1);
-
-      let addresses = match search_byte_sequence(&region, &str_to_utf16_bytes(&original_part)) {
-        Ok(addresses) => addresses,
-        Err(error) => {
-          warn!("error searching memory region {:?}: {}", region, error);
-          continue;
-        }
-      };
-
-      for address in &addresses {
-        debug!(
-          "found public key part {} at address: 0x{:x} in region {:?} (size: {})",
-          index + 1,
-          address,
-          region,
-          bytes_to_human_readable(region.size() as u64)
-        );
-
-        let virtual_address = region.start + address;
-        match write_to_memory(virtual_address, &str_to_utf16_bytes(patched_part)) {
-          Ok(_) => {
-            trace!(
-              "successfully wrote public key part {} to memory at address 0x{:x}",
-              index + 1,
-              virtual_address
-            );
-            *times += 1;
-          }
-          Err(error) => {
-            error!("error writing to memory: {}", error);
-          }
-        }
-      }
-    }
-
-    for (index, (original_part, (patched_part, times))) in key_parts.iter_mut().enumerate() {
-      trace!("searching for public key part {}", index + 1);
-
-      let addresses = match search_byte_sequence(&region, &pad_to_utf16_bytes(&original_part)) {
-        Ok(addresses) => addresses,
-        Err(error) => {
-          warn!("error searching memory region {:?}: {}", region, error);
-          continue;
-        }
-      };
-
-      for address in &addresses {
-        debug!(
-          "found public key part {} sequence at address: 0x{:x} in region {:?} (size: {})",
-          index + 1,
-          address,
-          region,
-          bytes_to_human_readable(region.size() as u64)
-        );
-
-        let virtual_address = region.start + address;
-        match write_to_memory(virtual_address, &pad_to_utf16_bytes(patched_part)) {
-          Ok(_) => {
-            trace!(
-              "successfully wrote public key part {} to memory at address 0x{:x}",
-              index + 1,
-              virtual_address
-            );
-            *times += 1;
-          }
-          Err(error) => {
-            error!("error writing to memory: {}", error);
-          }
-        }
-      }
-    }
-  }
-
-  info!("replaced static url {} times", found_original);
-  info!("'{}' -> '{}'", ORIGINAL_STATIC_URL, new_static_url);
-
-  for (index, (original_part, (patched_part, times))) in key_parts_plain.iter().enumerate() {
-    info!(
-      "replaced public key plain part {} '{}' -> '{}', {} times",
-      index + 1,
-      original_part,
-      patched_part,
-      times
-    );
-  }
-
-  for (index, (original_part, (patched_part, times))) in key_parts.iter().enumerate() {
-    info!(
-      "replaced public key part {} '{:?}' -> '{:?}', {} times",
-      index + 1,
-      original_part,
-      patched_part,
-      times
-    );
-  }
-
-  let report = iter::once(found_original)
-    .chain(key_parts_plain.iter().map(|(_, (_, times))| *times))
-    .chain(key_parts.iter().map(|(_, (_, times))| *times))
-    .map(|count| count.to_string())
-    .collect::<Vec<_>>()
-    .join("/");
-  show_toast(&format!("Patch finished: {}", report));
-}
-
 pub unsafe extern "C" fn unload(env: *mut JNIEnv, _activity_object: jni_sys::jclass) -> jboolean {
   let mut vm: *mut JavaVM = ptr::null_mut();
 
@@ -628,7 +341,9 @@ struct Configuration {
 unsafe impl Send for Configuration {}
 
 const PATCH_METHOD_NONE: i32 = 0;
+#[deprecated(note = "removed")]
 const PATCH_METHOD_HOOK: i32 = 1;
+#[deprecated(note = "removed")]
 const PATCH_METHOD_OFF_THREAD_SCAN: i32 = 2;
 const PATCH_METHOD_LOAD_METADATA_FILE_HOOK: i32 = 3;
 

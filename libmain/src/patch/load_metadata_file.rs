@@ -25,7 +25,8 @@ pub fn load_metadata_file_hook() {
 
   unsafe {
     // il2cpp::vm::MetadataLoader::LoadMetadataFile
-    let target = get_virtual_address(0x00000000017b6774) as *mut c_void;
+    // let target = get_virtual_address(0x00000000017b6774) as *mut c_void;
+    let target = get_virtual_address(0x0000000002a39514) as *mut c_void;
     info!("target open address: {:p}", target as *const c_void);
     if let Some(hook) = Hook::new(
       target as *mut TargetFn,
@@ -46,7 +47,8 @@ pub fn load_metadata_file_hook() {
 
     // void __usercall il2cpp::utils::Runtime::GetDataDir(unsigned __int64 *a1@<X8>)
     #[allow(non_snake_case)]
-    let GetDataDir_address = get_virtual_address(0x0000000001811764);
+    // let GetDataDir_address = get_virtual_address(0x0000000001811764);
+    let GetDataDir_address = get_virtual_address(0x00000000029e1f78);
     let get_data_dir: extern "C" fn() = unsafe { mem::transmute(GetDataDir_address) };
 
     let mut a1: [u8; 24] = [0; 24];
@@ -161,7 +163,10 @@ pub fn load_metadata_file_hook() {
 
     let replacements = processor.generate_replacements().unwrap();
     for (original, replacement) in &replacements {
-      info!("replacing public key part {:?} -> {:?}", original, replacement);
+      info!(
+        "replacing public key part {:?} -> {:?}",
+        original, replacement
+      );
       editor
         .replace_string(original, replacement)
         .expect("failed to replace public key part");

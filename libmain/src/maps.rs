@@ -1,9 +1,8 @@
-use log::{info, trace};
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io;
-use std::io::{BufRead, Read, Seek, SeekFrom, Write};
-use memmem::{Searcher, TwoWaySearcher};
-use crate::util::bytes_to_human_readable;
+use std::io::BufRead;
+
+use log::trace;
 
 #[derive(Debug)]
 pub struct MemoryRegion {
@@ -24,7 +23,7 @@ impl MemoryRegion {
 
 pub fn read_memory_regions() -> io::Result<Vec<MemoryRegion>> {
   let path = "/proc/self/maps";
-  let file = File::open(&path)?;
+  let file = File::open(path)?;
   let reader = io::BufReader::new(file);
 
   let mut regions = Vec::new();
@@ -64,70 +63,4 @@ pub fn read_memory_regions() -> io::Result<Vec<MemoryRegion>> {
   }
 
   Ok(regions)
-}
-
-pub fn get_suitable_regions() -> Vec<MemoryRegion> {
-  let regions = match read_memory_regions() {
-    Ok(regions) => regions,
-    Err(error) => {
-      panic!("Failed to read memory regions: {}", error);
-    }
-  };
-
-  let mut suitable_regions = Vec::new();
-  for region in regions {
-    if !region.perms.contains("w") {
-      trace!("region {region:?} is not writable");
-      continue;
-    }
-
-    suitable_regions.push(region);
-  }
-
-  let total_size: u64 = suitable_regions
-    .iter()
-    .map(|region| region.size() as u64)
-    .sum();
-  info!("{} to scan", bytes_to_human_readable(total_size));
-
-  suitable_regions
-}
-
-pub fn search_byte_sequence(
-  region: &MemoryRegion,
-  sequence: &[u8],
-) -> io::Result<Vec<usize>> {
-  let mem_path = "/proc/self/mem";
-  let mut mem_file = OpenOptions::new().read(true).open(&mem_path)?;
-
-  let mut buffer = vec![0; region.size()];
-  mem_file.seek(SeekFrom::Start(region.start as u64))?;
-  let read = mem_file.read(&mut buffer)?;
-  trace!("read {} / {} bytes", read, buffer.len());
-
-  let mut start = 0;
-  let mut addresses = Vec::new();
-  let searcher = TwoWaySearcher::new(sequence);
-  loop {
-    trace!("searching from {}", start);
-    let position = searcher.search_in(&buffer[start..]);
-    if let Some(position) = position {
-      addresses.push(start + position);
-      start += position + sequence.len();
-    } else {
-      break;
-    }
-  }
-
-  Ok(addresses)
-}
-
-pub fn write_to_memory(address: usize, data: &[u8]) -> io::Result<()> {
-  let mem_path = "/proc/self/mem";
-  let mut mem_file = OpenOptions::new().read(true).write(true).open(&mem_path)?;
-
-  mem_file.seek(SeekFrom::Start(address as u64))?;
-  mem_file.write_all(data)?;
-
-  Ok(())
 }
