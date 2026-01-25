@@ -1,4 +1,4 @@
-#![allow(unsafe_op_in_unsafe_fn, dead_code)]
+#![allow(unsafe_op_in_unsafe_fn, clippy::missing_safety_doc)]
 
 mod and64_inline_hook;
 mod global_metadata;
@@ -6,21 +6,23 @@ mod jni_util;
 mod maps;
 mod patch;
 mod public_key_processor;
-mod util;
+mod versions;
 
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::{Arc, Mutex};
 use std::{mem, panic, ptr, str};
 
 use android_logger::Config;
 use jni_sys::{
-  JNI_TRUE, JNI_VERSION_1_6, JNIEnv, JNINativeMethod, JavaVM, jboolean, jclass, jint, jstring,
+  JNI_TRUE, JNI_VERSION_1_6, JNIEnv, JNINativeMethod, JavaVM, jboolean, jclass, jint, jobject,
+  jstring,
 };
 use log::{LevelFilter, debug, error, info};
 
 use crate::maps::{MemoryRegion, read_memory_regions};
+use crate::patch::PatchMethod;
 
 #[allow(non_camel_case_types)]
 type JNI_OnLoad_t = unsafe extern "C" fn(vm: *mut JavaVM, reserved: *mut c_void) -> jint;
@@ -122,58 +124,30 @@ pub unsafe extern "C" fn load(
 
   libc::free(c_path as *mut c_void);
 
-  *EXISTING_REGIONS.lock().unwrap() = read_memory_regions().unwrap();
-
-  // ptr::write_volatile(0x1 as *mut usize, 0x4e000000);
-
-  // Breaks the game: Wonder.UI.Title.TitleScene$$.cctor set _IsFirst_k__BackingField to 0
-  // unsafe {
-  //   let address = get_virtual_address(0x000000000473F4E8) as *const u32;
-  //   // MOV w9, #0
-  //   ptr::write_volatile(address as *mut u32, 0x1200002A);
-  //   info!("wrote MOVZ instruction to address: 0x{:x}", address as usize);
-  // }
-
-  let skip_logo = CONFIGURATION.lock().unwrap().as_ref().unwrap().skip_logo;
-  if skip_logo {
+  if get_configuration_params().skip_logo {
     info!("applying skip logo patch");
 
-    unsafe {
-      // Skip Sesisoft logo: MOVI V0.16B, #0
-      let address = get_virtual_address(0x0000000004742bd8) as *mut u32;
-      ptr::write_volatile(address, 0x4e000000);
-      info!("wrote 'movi v0.16b, #0' at {:p}", address);
-    }
-
-    unsafe {
-      // Skip Sumzap logo: MOVI V0.16B, #0
-      let address = get_virtual_address(0x0000000004742c88) as *mut u32;
-      ptr::write_volatile(address, 0x4e000000);
-      info!("wrote 'movi v0.16b, #0' at {:p}", address);
+    for &(offset, patch) in get_version_patches().skip_logo {
+      unsafe {
+        let address = get_virtual_address(offset) as *mut u32;
+        ptr::write_volatile(address, patch);
+        info!("wrote patch 0x{:08x} to address {:p}", patch, address);
+      }
     }
   }
 
-  let method = CONFIGURATION.lock().unwrap().as_ref().unwrap().method;
   #[allow(deprecated)]
-  match method {
-    PATCH_METHOD_NONE => {
+  match get_configuration_params().method {
+    PatchMethod::None => {
       info!("not patching");
     }
-    PATCH_METHOD_HOOK => panic!("manual hooking method was removed"),
-    PATCH_METHOD_OFF_THREAD_SCAN => panic!("off-thread scan method was removed"),
-    PATCH_METHOD_LOAD_METADATA_FILE_HOOK => patch::load_metadata_file_hook(),
-    _ => panic!("unknown patch method: {method}"),
+    PatchMethod::Hook => panic!("manual hooking method was removed"),
+    PatchMethod::OffThreadScan => panic!("off-thread scan method was removed"),
+    PatchMethod::LoadMetadataFileHook => patch::load_metadata_file_hook(),
   }
 
   JNI_TRUE
 }
-
-static EXISTING_REGIONS: Mutex<Vec<MemoryRegion>> = Mutex::new(Vec::new());
-
-static ORIGINAL_STATIC_URL: &str = "https://static-prd-wonder.sesisoft.com/";
-// static ORIGINAL_STATIC_URL: &str = "https://axel.assasans.dev/static///////";
-// static NEW_STATIC_URL: &str = "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy";
-// static NEW_STATIC_URL: &str = "https://axel.assasans.dev/static///////";
 
 pub fn make_region_writable(virtual_address: usize) {
   for region in read_memory_regions().unwrap() {
@@ -241,59 +215,6 @@ pub fn get_virtual_address(address: usize) -> usize {
   panic!("virtual address not found for address: 0x{:x}", address);
 }
 
-unsafe fn os_arch_clear_cache<T>(start: *const T, end: *const T) -> bool {
-  let start = start as u64;
-  let end = end as u64;
-
-  let mut ctr_el0: u64;
-  // Get Cache Type Info.
-  unsafe {
-    core::arch::asm!("mrs {0}, ctr_el0", out(reg) ctr_el0);
-  }
-
-  // If CTR_EL0.IDC is set, data cache cleaning to the point of unification
-  // is not required for instruction to data coherence.
-  if ((ctr_el0 >> 28) & 0x1) == 0x0 {
-    let dcache_line_size = 4 << ((ctr_el0 >> 16) & 15);
-    let mut addr = start & !(dcache_line_size - 1);
-    while addr < end {
-      unsafe {
-        core::arch::asm!(
-        "dc cvau, {0}",
-        in(reg) addr,
-        );
-      }
-      addr += dcache_line_size;
-    }
-  }
-  unsafe {
-    core::arch::asm!("dsb ish");
-  }
-  // If CTR_EL0.DIC is set, instruction cache invalidation to the point of
-  // unification is not required for instruction to data coherence.
-  if ((ctr_el0 >> 29) & 0x1) == 0x0 {
-    let icache_line_size = 4 << ((ctr_el0 >> 0) & 15);
-    let mut addr = start & !(icache_line_size - 1);
-    while addr < end {
-      unsafe {
-        core::arch::asm!(
-        "ic ivau, {0}",
-        in(reg) addr,
-        );
-      }
-      addr += icache_line_size;
-    }
-    unsafe {
-      core::arch::asm!("dsb ish");
-    }
-  }
-  unsafe {
-    core::arch::asm!("isb sy");
-  }
-
-  true
-}
-
 pub unsafe extern "C" fn unload(env: *mut JNIEnv, _activity_object: jni_sys::jclass) -> jboolean {
   let mut vm: *mut JavaVM = ptr::null_mut();
 
@@ -331,23 +252,37 @@ pub unsafe extern "C" fn unload(env: *mut JNIEnv, _activity_object: jni_sys::jcl
 }
 
 struct Configuration {
-  pub server_url: String,
-  pub public_key: String,
-  pub method: i32,
-  pub skip_logo: bool,
+  pub params: Arc<ConfigureParams>,
   pub bridge_class: jclass,
 }
 
 unsafe impl Send for Configuration {}
 
-const PATCH_METHOD_NONE: i32 = 0;
-#[deprecated(note = "removed")]
-const PATCH_METHOD_HOOK: i32 = 1;
-#[deprecated(note = "removed")]
-const PATCH_METHOD_OFF_THREAD_SCAN: i32 = 2;
-const PATCH_METHOD_LOAD_METADATA_FILE_HOOK: i32 = 3;
-
 static CONFIGURATION: Mutex<Option<Configuration>> = Mutex::new(None);
+
+pub fn get_configuration_params() -> Arc<ConfigureParams> {
+  CONFIGURATION
+    .lock()
+    .unwrap()
+    .as_ref()
+    .unwrap()
+    .params
+    .clone()
+}
+
+pub fn get_version_patches() -> &'static versions::VersionPatches {
+  let params = get_configuration_params();
+  for (version, patches) in versions::VERSIONS {
+    if *version == params.version {
+      info!("found matching version patches: {:?}", patches);
+      return patches;
+    }
+  }
+  panic!(
+    "no matching version patches found for version: {}",
+    params.version
+  );
+}
 
 pub unsafe extern "C" fn supplemental_verify(
   _env: *mut JNIEnv,
@@ -357,59 +292,64 @@ pub unsafe extern "C" fn supplemental_verify(
   JNI_TRUE
 }
 
+#[derive(Debug)]
+pub struct ConfigureParams {
+  pub version: String,
+  pub server_url: String,
+  pub public_key: String,
+  pub method: PatchMethod,
+  pub skip_logo: bool,
+}
+
 pub unsafe extern "C" fn configure(
   env: *mut JNIEnv,
   _activity_object: jclass,
-  server_url: jstring,
-  public_key: jstring,
-  method: jint,
-  skip_logo: jboolean,
+  object: jobject,
 ) -> jboolean {
-  let server_url = unsafe {
-    let c_len = ((**env).v1_6.GetStringUTFLength)(env, server_url) + 1;
-    let c_server_url = libc::malloc(c_len as usize) as *mut c_char;
-    let c_chars = ((**env).v1_6.GetStringUTFChars)(env, server_url, ptr::null_mut());
+  let class = ((**env).v1_6.GetObjectClass)(env, object);
+  let get_field_ref =
+    |name: &CStr, sig: &CStr| ((**env).v1_6.GetFieldID)(env, class, name.as_ptr(), sig.as_ptr());
+  let get_string_field = |field_id: jni_sys::jfieldID| -> String {
+    let j_str = ((**env).v1_6.GetObjectField)(env, object, field_id) as jstring;
+    let c_len = ((**env).v1_6.GetStringUTFLength)(env, j_str) + 1;
+    let c_str = libc::malloc(c_len as usize) as *mut c_char;
+    let c_chars = ((**env).v1_6.GetStringUTFChars)(env, j_str, ptr::null_mut());
 
     libc::memcpy(
-      c_server_url as *mut c_void,
+      c_str as *mut c_void,
       c_chars as *const c_void,
       c_len as usize,
     );
 
-    ((**env).v1_6.ReleaseStringUTFChars)(env, server_url, c_chars);
+    ((**env).v1_6.ReleaseStringUTFChars)(env, j_str, c_chars);
 
-    CStr::from_ptr(c_server_url).to_string_lossy().into_owned()
+    let result = CStr::from_ptr(c_str).to_string_lossy().into_owned();
+    libc::free(c_str as *mut c_void);
+    result
   };
+  let get_int_field =
+    |field_id: jni_sys::jfieldID| -> i32 { ((**env).v1_6.GetIntField)(env, object, field_id) };
+  let get_bool_field =
+    |field_id: jni_sys::jfieldID| -> bool { ((**env).v1_6.GetBooleanField)(env, object, field_id) };
 
-  let public_key = unsafe {
-    let c_len = ((**env).v1_6.GetStringUTFLength)(env, public_key) + 1;
-    let c_public_key = libc::malloc(c_len as usize) as *mut c_char;
-    let c_chars = ((**env).v1_6.GetStringUTFChars)(env, public_key, ptr::null_mut());
-
-    libc::memcpy(
-      c_public_key as *mut c_void,
-      c_chars as *const c_void,
-      c_len as usize,
-    );
-
-    ((**env).v1_6.ReleaseStringUTFChars)(env, public_key, c_chars);
-
-    CStr::from_ptr(c_public_key).to_string_lossy().into_owned()
+  let params = ConfigureParams {
+    version: get_string_field(get_field_ref(c"version", c"Ljava/lang/String;")),
+    server_url: get_string_field(get_field_ref(c"serverUrl", c"Ljava/lang/String;")),
+    public_key: get_string_field(get_field_ref(c"publicKey", c"Ljava/lang/String;")),
+    method: {
+      let method = get_int_field(get_field_ref(c"method", c"I"));
+      method
+        .try_into()
+        .unwrap_or_else(|_| panic!("invalid patch method: {}", method))
+    },
+    skip_logo: get_bool_field(get_field_ref(c"skipLogo", c"Z")),
   };
-
-  info!(
-    "configure(server_url='{}', public_key='{}', method={})",
-    server_url, public_key, method
-  );
+  info!("configuration received: {:?}", params);
 
   let bridge_class =
     ((**env).v1_6.FindClass)(env, c"jp/assasans/konofd/stub/NativeLoaderBridge".as_ptr());
-
   *CONFIGURATION.lock().unwrap() = Some(Configuration {
-    server_url,
-    public_key,
-    method,
-    skip_logo,
+    params: Arc::new(params),
     bridge_class: ((**env).v1_6.NewGlobalRef)(env, bridge_class),
   });
 
@@ -418,6 +358,13 @@ pub unsafe extern "C" fn configure(
 
 pub struct SafeJavaVM(pub *mut JavaVM);
 
+/// SAFETY: [JavaVM] pointer is safe to send between threads.
+/// https://docs.oracle.com/en/java/javase/11/docs/specs/jni/invocation.html#invocation
+/// > The JNI interface pointer (JNIEnv) is valid only in the current thread.
+/// > **Should another thread need to access the Java VM, it must first call AttachCurrentThread()**
+/// > **to attach itself to the VM and obtain a JNI interface pointer.** Once attached to the VM,
+/// > a native thread works just like an ordinary Java thread running inside a native method.
+/// > The native thread remains attached to the VM until it calls DetachCurrentThread() to detach itself.
 unsafe impl Send for SafeJavaVM {}
 
 pub static JAVA_VM: Mutex<Option<SafeJavaVM>> = Mutex::new(None);
@@ -457,8 +404,13 @@ pub unsafe extern "C" fn JNI_OnLoad(vm: *mut JavaVM, _reserved: *mut c_void) -> 
     ];
 
     let native_loader = ((**env).v1_6.FindClass)(env, c"com/unity3d/player/NativeLoader".as_ptr());
-
-    if ((**env).v1_6.RegisterNatives)(env, native_loader, jni_methods.as_ptr(), 2) != 0 {
+    if ((**env).v1_6.RegisterNatives)(
+      env,
+      native_loader,
+      jni_methods.as_ptr(),
+      jni_methods.len() as i32,
+    ) != 0
+    {
       ((**env).v1_6.FatalError)(env, c"com/unity3d/player/NativeLoader".as_ptr());
     }
   }
@@ -472,7 +424,7 @@ pub unsafe extern "C" fn JNI_OnLoad(vm: *mut JavaVM, _reserved: *mut c_void) -> 
       },
       JNINativeMethod {
         name: c"configure".as_ptr().cast_mut(),
-        signature: c"(Ljava/lang/String;Ljava/lang/String;IZ)Z"
+        signature: c"(Ljp/assasans/konofd/stub/ConfigureParams;)Z"
           .as_ptr()
           .cast_mut(),
         fnPtr: configure as *mut c_void,
@@ -483,8 +435,13 @@ pub unsafe extern "C" fn JNI_OnLoad(vm: *mut JavaVM, _reserved: *mut c_void) -> 
       env,
       c"jp/assasans/konofd/stub/NativeLoaderSupplemental".as_ptr(),
     );
-
-    if ((**env).v1_6.RegisterNatives)(env, native_loader, jni_methods.as_ptr(), 2) != 0 {
+    if ((**env).v1_6.RegisterNatives)(
+      env,
+      native_loader,
+      jni_methods.as_ptr(),
+      jni_methods.len() as i32,
+    ) != 0
+    {
       ((**env).v1_6.FatalError)(
         env,
         c"jp/assasans/konofd/stub/NativeLoaderSupplemental".as_ptr(),

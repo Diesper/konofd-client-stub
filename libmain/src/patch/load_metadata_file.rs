@@ -11,7 +11,7 @@ use crate::and64_inline_hook::Hook;
 use crate::global_metadata::MetadataEditor;
 use crate::jni_util::show_toast;
 use crate::public_key_processor::PublicKeyProcessor;
-use crate::{CONFIGURATION, get_virtual_address};
+use crate::{get_configuration_params, get_version_patches, get_virtual_address};
 
 pub fn load_metadata_file_hook() {
   // We don't really care about original implementation, but store it just in case
@@ -25,8 +25,8 @@ pub fn load_metadata_file_hook() {
 
   unsafe {
     // il2cpp::vm::MetadataLoader::LoadMetadataFile
-    // let target = get_virtual_address(0x00000000017b6774) as *mut c_void;
-    let target = get_virtual_address(0x0000000002a39514) as *mut c_void;
+    let target =
+      get_virtual_address(get_version_patches().load_metadata_file_offset) as *mut c_void;
     info!("target open address: {:p}", target as *const c_void);
     if let Some(hook) = Hook::new(
       target as *mut TargetFn,
@@ -47,8 +47,7 @@ pub fn load_metadata_file_hook() {
 
     // void __usercall il2cpp::utils::Runtime::GetDataDir(unsigned __int64 *a1@<X8>)
     #[allow(non_snake_case)]
-    // let GetDataDir_address = get_virtual_address(0x0000000001811764);
-    let GetDataDir_address = get_virtual_address(0x00000000029e1f78);
+    let GetDataDir_address = get_virtual_address(get_version_patches().get_data_dir_offset);
     let get_data_dir: extern "C" fn() = unsafe { mem::transmute(GetDataDir_address) };
 
     let mut a1: [u8; 24] = [0; 24];
@@ -129,27 +128,21 @@ pub fn load_metadata_file_hook() {
       );
     }
 
-    let static_url = CONFIGURATION
-      .lock()
-      .unwrap()
-      .as_ref()
-      .unwrap()
-      .server_url
-      .clone();
-    let replaced = editor
-      .replace_strings_containing("https://static-prd-wonder.sesisoft.com/", |string| {
-        string.replace("https://static-prd-wonder.sesisoft.com/", &static_url)
-      })
-      .expect("failed to replace static url");
-    info!("replaced {} occurrences of static url", replaced);
+    {
+      let original_static_url = &get_version_patches().static_url;
+      let static_url = &get_configuration_params().server_url;
+      let occurrences = editor
+        .replace_strings_containing(original_static_url, |string| {
+          string.replace(original_static_url, static_url)
+        })
+        .expect("failed to replace static url");
+      info!("replaced {} occurrences of static url", occurrences);
+      if occurrences < 1 {
+        show_toast("WARN: static url occurrences < 1");
+      }
+    }
 
-    let new_public_key = CONFIGURATION
-      .lock()
-      .unwrap()
-      .as_ref()
-      .unwrap()
-      .public_key
-      .clone();
+    let new_public_key = &get_configuration_params().public_key;
     //     let public_key = r#"-----BEGIN PUBLIC KEY-----
     // MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDPtV42y5gtf/9zH+gzEQzEqC+j
     // j/jC6wHdBtXdkvDrUAgKU1KO8w1sgUGlnEkn0CKfIZd7oLWWaoKF+uWEG04PBm6C
@@ -158,7 +151,7 @@ pub fn load_metadata_file_hook() {
     // -----END PUBLIC KEY-----
     // "#;
     // let processor = PublicKeyProcessor::from_pem_string(public_key).unwrap();
-    let processor = PublicKeyProcessor::from_modulus_base64(&new_public_key);
+    let processor = PublicKeyProcessor::from_modulus_base64(new_public_key);
     info!("using public key: {}", processor.modulus_base64());
 
     let replacements = processor.generate_replacements().unwrap();
@@ -167,9 +160,16 @@ pub fn load_metadata_file_hook() {
         "replacing public key part {:?} -> {:?}",
         original, replacement
       );
-      editor
+      let occurrences = editor
         .replace_string(original, replacement)
         .expect("failed to replace public key part");
+      info!("  replaced {} occurrences", occurrences);
+      if occurrences < 1 {
+        show_toast(&format!(
+          "WARN: public key part '{}' occurrences < 1",
+          original
+        ));
+      }
     }
 
     let patched_global_metadata = editor.into_bytes();

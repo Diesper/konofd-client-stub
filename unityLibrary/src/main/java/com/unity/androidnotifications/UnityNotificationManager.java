@@ -22,21 +22,30 @@ import java.util.Set;
 
 public class UnityNotificationManager
   extends BroadcastReceiver {
-  static final String KEY_CHANNEL_ID = "channelID";
-  static final String KEY_FIRE_TIME = "fireTime";
-  static final String KEY_ID = "id";
-  static final String KEY_INTENT_DATA = "data";
-  static final String KEY_LARGE_ICON = "largeIcon";
-  static final String KEY_NOTIFICATION = "unityNotification";
-  static final String KEY_NOTIFICATION_DISMISSED = "com.unity.NotificationDismissed";
-  static final String KEY_NOTIFICATION_ID = "com.unity.NotificationID";
-  static final String KEY_REPEAT_INTERVAL = "repeatInterval";
-  static final String KEY_SHOW_IN_FOREGROUND = "com.unity.showInForeground";
-  static final String KEY_SMALL_ICON = "smallIcon";
+  public static final String KEY_BIG_CONTENT_DESCRIPTION = "com.unity.BigContentDescription";
+  public static final String KEY_BIG_CONTENT_TITLE = "com.unity.BigContentTytle";
+  public static final String KEY_BIG_LARGE_ICON = "com.unity.BigLargeIcon";
+  public static final String KEY_BIG_PICTURE = "com.unity.BigPicture";
+  public static final String KEY_BIG_SHOW_WHEN_COLLAPSED = "com.unity.BigShowWhenCollapsed";
+  public static final String KEY_BIG_SUMMARY_TEXT = "com.unity.BigSummaryText";
+  public static final String KEY_CHANNEL_ID = "channelID";
+  public static final String KEY_FIRE_TIME = "fireTime";
+  public static final String KEY_ID = "id";
+  public static final String KEY_INTENT_DATA = "data";
+  public static final String KEY_LARGE_ICON = "largeIcon";
+  public static final String KEY_NOTIFICATION = "unityNotification";
+  public static final String KEY_NOTIFICATION_DISMISSED = "com.unity.NotificationDismissed";
+  public static final String KEY_NOTIFICATION_ID = "com.unity.NotificationID";
+  public static final String KEY_REPEAT_INTERVAL = "repeatInterval";
+  public static final String KEY_SHOW_IN_FOREGROUND = "com.unity.showInForeground";
+  public static final String KEY_SMALL_ICON = "smallIcon";
   static final String NOTIFICATION_CHANNELS_SHARED_PREFS = "UNITY_NOTIFICATIONS";
   static final String NOTIFICATION_CHANNELS_SHARED_PREFS_KEY = "ChannelIDs";
   static final String NOTIFICATION_IDS_SHARED_PREFS = "UNITY_STORED_NOTIFICATION_IDS";
   static final String NOTIFICATION_IDS_SHARED_PREFS_KEY = "UNITY_NOTIFICATION_IDS";
+  private static final int PERMISSION_STATUS_ALLOWED = 1;
+  private static final int PERMISSION_STATUS_DENIED = 2;
+  private static final int PERMISSION_STATUS_NOTIFICATIONS_BLOCKED_FOR_APP = 5;
   static final String TAG_UNITY = "UnityNotifications";
 
   static UnityNotificationManager mUnityNotificationManager;
@@ -256,6 +265,10 @@ public class UnityNotificationManager
 
   void performNotificationScheduling(int n, Notification.Builder builder, boolean bl) {
     Log.d("UnityNotificationManager", "performNotificationScheduling: id=" + n + ", builder=" + builder + ", isScheduled=" + bl);
+  }
+
+  public void registerNotificationChannel(String var1, String var2, int var3, String var4, boolean var5, boolean var6, boolean var7, boolean var8, long[] var9, int var10, String var11) {
+    Log.d("UnityNotificationManager", "registerNotificationChannel: channelID=" + var1 + ", name=" + var2 + ", importance=" + var3 + ", description=" + var4 + ", showBadge=" + var5 + ", enableLights=" + var6 + ", enableVibration=" + var7 + ", bypassDnd=" + var8 + ", groupId=" + var11);
   }
 
   public void registerNotificationChannel(String string, String string2, int n, String string3, boolean bl, boolean bl2, boolean bl3, boolean bl4, long[] lArray, int n2) {

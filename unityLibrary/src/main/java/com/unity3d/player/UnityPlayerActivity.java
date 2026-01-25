@@ -12,6 +12,7 @@ import android.view.MotionEvent;
 import android.view.Window;
 import android.widget.Toast;
 
+import jp.assasans.konofd.stub.ConfigureParams;
 import jp.assasans.konofd.stub.NativeLoaderSupplemental;
 
 public class UnityPlayerActivity extends Activity implements IUnityPlayerLifecycleEvents {
@@ -68,8 +69,16 @@ public class UnityPlayerActivity extends Activity implements IUnityPlayerLifecyc
       throw new IllegalArgumentException("Missing required parameters: server_url, public_key, method, skip_logo.");
     }
 
+    ConfigureParams params = new ConfigureParams();
+    // params.version = "5.9.0-jp";
+    params.version = "4.11.5-global";
+    params.serverUrl = serverUrl;
+    params.publicKey = publicKey;
+    params.method = method;
+    params.skipLogo = skipLogo;
+
     try {
-      if(!NativeLoaderSupplemental.configure(serverUrl, publicKey, method, skipLogo)) {
+      if(!NativeLoaderSupplemental.configure(params)) {
         throw new RuntimeException("NativeLoaderSupplemental.configure failed");
       }
     } catch(UnsatisfiedLinkError exception) {
