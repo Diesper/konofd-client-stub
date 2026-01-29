@@ -3,7 +3,9 @@ package com.android.billingclient.api;
 import android.app.Activity;
 import android.util.Log;
 
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 
 public class BillingClientImpl extends BillingClient {
   @Override
@@ -34,7 +36,7 @@ public class BillingClientImpl extends BillingClient {
   @Override
   public void getBillingConfigAsync(GetBillingConfigParams var1, BillingConfigResponseListener var2) {
     Log.d("BillingClientImpl", "getBillingConfigAsync: " + var1);
-    var2.onBillingConfigResponse(BillingResult.newBuilder().setResponseCode(0).build(), null);
+    var2.onBillingConfigResponse(BillingResult.newBuilder().setResponseCode(6).build(), null);
   }
 
   @Override
@@ -46,13 +48,13 @@ public class BillingClientImpl extends BillingClient {
   @Override
   public void isAlternativeBillingOnlyAvailableAsync(AlternativeBillingOnlyAvailabilityListener var1) {
     Log.d("BillingClientImpl", "isAlternativeBillingOnlyAvailableAsync: " + var1);
-    var1.onAlternativeBillingOnlyAvailabilityResponse(BillingResult.newBuilder().setResponseCode(0).build());
+    var1.onAlternativeBillingOnlyAvailabilityResponse(BillingResult.newBuilder().setResponseCode(6).build());
   }
 
   @Override
   public void isExternalOfferAvailableAsync(ExternalOfferAvailabilityListener var1) {
     Log.d("BillingClientImpl", "isExternalOfferAvailableAsync: " + var1);
-    var1.onExternalOfferAvailabilityResponse(BillingResult.newBuilder().setResponseCode(0).build());
+    var1.onExternalOfferAvailabilityResponse(BillingResult.newBuilder().setResponseCode(6).build());
   }
 
   @Override
@@ -64,36 +66,54 @@ public class BillingClientImpl extends BillingClient {
   @Override
   public boolean isReady() {
     Log.d("BillingClientImpl", "isReady");
-    return true;
+    return false;
   }
 
   @Override
   public BillingResult launchBillingFlow(Activity var1, BillingFlowParams var2) {
     Log.d("BillingClientImpl", "launchBillingFlow: " + var1 + ", " + var2);
-    return BillingResult.newBuilder().setResponseCode(0).build();
+    return BillingResult.newBuilder().setResponseCode(6).build();
   }
 
   @Override
   public void queryProductDetailsAsync(QueryProductDetailsParams var1, ProductDetailsResponseListener var2) {
     Log.d("BillingClientImpl", "queryProductDetailsAsync: " + var1);
-    var2.onProductDetailsResponse(BillingResult.newBuilder().setResponseCode(0).build(), Collections.emptyList());
+    List<ProductDetails> details = new ArrayList<>();
+    for(QueryProductDetailsParams.Product product : var1.products) {
+      Log.d("BillingClientImpl", "  product: " + product);
+      details.add(new ProductDetails(product.getProductId(), product.getProductType()));
+    }
+
+    var2.onProductDetailsResponse(BillingResult.newBuilder().setResponseCode(0).build(), details);
   }
 
   @Override
   public void queryPurchaseHistoryAsync(QueryPurchaseHistoryParams var1, PurchaseHistoryResponseListener var2) {
     Log.d("BillingClientImpl", "queryPurchaseHistoryAsync: " + var1);
-    var2.onPurchaseHistoryResponse(BillingResult.newBuilder().setResponseCode(0).build(), Collections.emptyList());
+    var2.onPurchaseHistoryResponse(BillingResult.newBuilder().setResponseCode(6).build(), new ArrayList<>());
   }
 
   @Override
   public void queryPurchaseHistoryAsync(String var1, PurchaseHistoryResponseListener var2) {
     Log.d("BillingClientImpl", "queryPurchaseHistoryAsync: " + var1);
-    var2.onPurchaseHistoryResponse(BillingResult.newBuilder().setResponseCode(0).build(), Collections.emptyList());
+    var2.onPurchaseHistoryResponse(BillingResult.newBuilder().setResponseCode(6).build(), new ArrayList<>());
+  }
+
+  // @Override
+  // public void queryPurchasesAsync(QueryPurchasesParams var1, PurchasesResponseListener var2) {
+  //   Log.d("BillingClientImpl", "queryPurchasesAsync: " + var1);
+  //   var2.onQueryPurchasesResponse(BillingResult.newBuilder().setResponseCode(6).build(), new ArrayList<>());
+  // }
+
+  @Override
+  public void queryPurchasesAsync(String var1, PurchasesResponseListener var2) {
+    Log.d("BillingClientImpl", "queryPurchasesAsync: " + var1);
+    var2.onQueryPurchasesResponse(BillingResult.newBuilder().setResponseCode(6).build(), new ArrayList<>());
   }
 
   @Override
   public void startConnection(BillingClientStateListener var1) {
     Log.d("BillingClientImpl", "startConnection: " + var1);
-    var1.onBillingSetupFinished(BillingResult.newBuilder().setResponseCode(0).build());
+    var1.onBillingSetupFinished(BillingResult.newBuilder().setResponseCode(6).build());
   }
 }

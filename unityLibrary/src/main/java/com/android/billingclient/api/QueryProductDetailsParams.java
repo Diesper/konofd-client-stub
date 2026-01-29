@@ -5,20 +5,30 @@ import android.util.Log;
 import java.util.List;
 
 public final class QueryProductDetailsParams {
+  List<Product> products;
+
+  QueryProductDetailsParams(Builder var1) {
+    Log.d("BillingClient", "ctor: " + var1.products);
+    this.products = var1.products;
+  }
+
   public static Builder newBuilder() {
     return new Builder();
   }
 
   public static class Builder {
+    private List<Product> products;
+
     private Builder() {
     }
 
     public QueryProductDetailsParams build() {
-      return new QueryProductDetailsParams();
+      return new QueryProductDetailsParams(this);
     }
 
     public Builder setProductList(List<Product> var1) {
       Log.d("BillingClient", "setProductList: " + var1);
+      this.products = var1;
       return this;
     }
   }
@@ -36,11 +46,11 @@ public final class QueryProductDetailsParams {
       return new Builder();
     }
 
-    public final String zza() {
+    public final String getProductId() {
       return this.productId;
     }
 
-    public final String zzb() {
+    public final String getProductType() {
       return this.productType;
     }
 

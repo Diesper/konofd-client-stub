@@ -44,10 +44,10 @@ public abstract class BillingClient {
   public abstract void queryPurchaseHistoryAsync(String var1, PurchaseHistoryResponseListener var2);
 
   // public abstract void queryPurchasesAsync(QueryPurchasesParams var1, PurchasesResponseListener var2);
-  //
-  // @Deprecated
-  // public abstract void queryPurchasesAsync(String var1, PurchasesResponseListener var2);
-  //
+
+  @Deprecated
+  public abstract void queryPurchasesAsync(String var1, PurchasesResponseListener var2);
+
   // @Deprecated
   // public abstract void querySkuDetailsAsync(SkuDetailsParams var1, SkuDetailsResponseListener var2);
   //
