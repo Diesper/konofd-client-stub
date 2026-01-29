@@ -94,4 +94,50 @@ public class BillingFlowParams {
       }
     }
   }
+
+  public static class ProductDetailsParams {
+    private final ProductDetails details;
+    private final String offerToken;
+
+    ProductDetailsParams(Builder builder) {
+      super();
+      this.details = builder.details;
+      this.offerToken = builder.offerToken;
+    }
+
+    public static Builder newBuilder() {
+      return new Builder();
+    }
+
+    public final ProductDetails getDetails() {
+      return this.details;
+    }
+
+    public final String getOfferToken() {
+      return this.offerToken;
+    }
+
+    public static class Builder {
+      private ProductDetails details;
+      private String offerToken;
+
+      private Builder() {
+        super();
+      }
+
+      public BillingFlowParams.ProductDetailsParams build() {
+        return new BillingFlowParams.ProductDetailsParams(this);
+      }
+
+      public Builder setOfferToken(String var1) {
+        this.offerToken = var1;
+        return this;
+      }
+
+      public Builder setProductDetails(ProductDetails var1) {
+        this.details = var1;
+        return this;
+      }
+    }
+  }
 }

@@ -62,7 +62,7 @@ public abstract class BillingClient {
   public static class Builder {
     private volatile String zza;
     private final Context zzc;
-    private volatile PurchasesUpdatedListener zzd;
+    volatile PurchasesUpdatedListener purchasesUpdatedListener;
     private volatile AlternativeBillingListener zzg;
     private volatile UserChoiceBillingListener zzh;
     private volatile boolean zzj;
@@ -73,7 +73,7 @@ public abstract class BillingClient {
     }
 
     public BillingClient build() {
-      return new BillingClientImpl();
+      return new BillingClientImpl(this);
     }
 
     @Deprecated
@@ -102,7 +102,7 @@ public abstract class BillingClient {
     }
 
     public Builder setListener(PurchasesUpdatedListener var1) {
-      this.zzd = var1;
+      this.purchasesUpdatedListener = var1;
       return this;
     }
   }

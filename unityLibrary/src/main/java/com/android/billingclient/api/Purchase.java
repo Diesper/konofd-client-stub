@@ -1,11 +1,19 @@
 package com.android.billingclient.api;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class Purchase {
   private final String originalJson;
   private final String signature;
+
+  Purchase() {
+    this.originalJson = "";
+    this.signature = "";
+  }
 
   public Purchase(String originalJson, String signature) {
     this.originalJson = originalJson;
@@ -29,15 +37,15 @@ public class Purchase {
   }
 
   public String getPackageName() {
-    return "packageName";
+    return "jp.assasans.konofd.stub";
   }
 
   public List<String> getProducts() {
-    return new ArrayList<>();
+    return Collections.singletonList("com.nexon.konosuba_quartz_0004");
   }
 
   public int getPurchaseState() {
-    return 1;
+    return PurchaseState.PURCHASED;
   }
 
   public long getPurchaseTime() {
@@ -49,7 +57,7 @@ public class Purchase {
   }
 
   public int getQuantity() {
-    return 42;
+    return 1;
   }
 
   public String getSignature() {
@@ -58,7 +66,7 @@ public class Purchase {
 
   @Deprecated
   public ArrayList<String> getSkus() {
-    return new ArrayList<>();
+    return new ArrayList<>(this.getProducts());
   }
 
   @Override
@@ -77,5 +85,12 @@ public class Purchase {
   @Override
   public String toString() {
     return this.originalJson != null ? this.originalJson : "";
+  }
+
+  @Retention(RetentionPolicy.SOURCE)
+  public @interface PurchaseState {
+    int PENDING = 2;
+    int PURCHASED = 1;
+    int UNSPECIFIED_STATE = 0;
   }
 }

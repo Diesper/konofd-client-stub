@@ -8,6 +8,12 @@ import java.util.Collections;
 import java.util.List;
 
 public class BillingClientImpl extends BillingClient {
+  private PurchasesUpdatedListener purchasesUpdatedListener;
+
+  BillingClientImpl(Builder builder) {
+    this.purchasesUpdatedListener = builder.purchasesUpdatedListener;
+  }
+
   @Override
   public void acknowledgePurchase(AcknowledgePurchaseParams var1, AcknowledgePurchaseResponseListener var2) {
     Log.d("BillingClientImpl", "acknowledgePurchase: " + var1);
@@ -72,7 +78,13 @@ public class BillingClientImpl extends BillingClient {
   @Override
   public BillingResult launchBillingFlow(Activity var1, BillingFlowParams var2) {
     Log.d("BillingClientImpl", "launchBillingFlow: " + var1 + ", " + var2);
-    return BillingResult.newBuilder().setResponseCode(6).build();
+    List<Purchase> purchases = new ArrayList<>();
+    purchases.add(new Purchase());
+    this.purchasesUpdatedListener.onPurchasesUpdated(
+      BillingResult.newBuilder().setResponseCode(0).build(),
+      purchases
+    );
+    return BillingResult.newBuilder().setResponseCode(0).build();
   }
 
   @Override
